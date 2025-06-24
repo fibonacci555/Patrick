@@ -5,7 +5,7 @@ const moment = require('moment-timezone');
 const fs = require('fs-extra');
 const path = require('path');
 
-// Bot token (replace with your new secure token)
+// Bot token
 const TOKEN = '7681224927:AAE96XaKmmRA8gJApv0kFxos6f36Js_4S7s';
 const bot = new TelegramBot(TOKEN, { polling: true });
 
@@ -85,6 +85,7 @@ async function runScript(config, chatId) {
 
   while (runningConfigs.has(config.config_id) && !stopAllRequested) {
     console.log(`[INFO] Sending API actions for config ${config.config_id}...`);
+    let hasError = false;
 
     // Reset successful counts for this loop
     for (const [position] of positionStatus) {
@@ -122,6 +123,7 @@ async function runScript(config, chatId) {
         }
         consecutive403s = 0; // Reset counter on success
       } catch (error) {
+        hasError = true;
         console.error(`[ERROR] Request failed: ${error.message}`);
         let errorMessage = `[ERROR] Request failed for config ${config.config_id}, deal_position=${params._deal_position}, type=${params.type}: ${error.message}\n`;
         if (error.response) {
@@ -136,7 +138,7 @@ async function runScript(config, chatId) {
               runningConfigs.delete(config.config_id);
               errorMessage += `Stopped config ${config.config_id} due to too many 403 errors. Check Cloudflare protection or deal parameters.`;
               await bot.sendMessage(config.chat_id || chatId, truncateMessage(errorMessage));
-              return;
+              return { success: false, error: config.config_id };
             }
           }
         } else if (error.request) {
@@ -161,11 +163,14 @@ async function runScript(config, chatId) {
       }
     }
 
-    if (!runningConfigs.has(config.config_id) || stopAllRequested) break;
+    if (!runningConfigs.has(config.config_id) || stopAllRequested) {
+      return { success: !hasError, error: hasError ? config.config_id : null };
+    }
     const sleepTime = Math.random() * (maxSleep - minSleep) + minSleep;
     console.log(`[INFO] Waiting for ${Math.round(sleepTime)} seconds for config ${config.config_id}...\n`);
     await sleep(sleepTime * 1000);
   }
+  return { success: !hasError, error: hasError ? config.config_id : null };
 }
 
 // Start command
@@ -259,21 +264,44 @@ bot.onText(/\/run (.+)/, async (msg, match) => {
       bot.sendMessage(chatId, 'No configurations found.');
       return;
     }
-    bot.sendMessage(chatId, `Starting all ${configs.length} configurations concurrently.`);
-    for (const config of configs) {
-      if (runningConfigs.has(config.config_id)) {
-        bot.sendMessage(chatId, `Configuration ${config.config_id} is already running.`);
-        continue;
-      }
-      config.chat_id = chatId; // Store chat_id for notifications
-      runningConfigs.add(config.config_id);
-      bot.sendMessage(chatId, `Starting configuration ${config.config_id}.`);
-      // Start each config in its own async context without awaiting
-      runScript(config, chatId).catch(error => {
-        console.error(`[ERROR] Script error for config ${config.config_id}: ${error.message}`);
-        runningConfigs.delete(config.config_id);
-        bot.sendMessage(chatId, `Script for config ${config.config_id} stopped due to error: ${error.message}`);
+    if (runningConfigs.size > 0) {
+      bot.sendMessage(chatId, 'One or more configs are already running. Use /stop to stop them.');
+      return;
+    }
+    bot.sendMessage(chatId, `Starting configs for all (${configs.length} configs).`);
+    while (!stopAllRequested) {
+      let successful = 0;
+      let errors = 0;
+      const errorConfigIds = [];
+      const promises = configs.map(config => {
+        if (runningConfigs.has(config.config_id)) return Promise.resolve({ success: false, error: config.config_id });
+        config.chat_id = chatId; // Store chat_id for notifications
+        runningConfigs.add(config.config_id);
+        return runScript(config, chatId).catch(error => {
+          console.error(`[ERROR] Script error for config ${config.config_id}: ${error.message}`);
+          return { success: false, error: config.config_id };
+        }).finally(() => {
+          runningConfigs.delete(config.config_id);
+        });
       });
+      const results = await Promise.all(promises);
+      results.forEach(result => {
+        if (result.success) successful++;
+        else {
+          errors++;
+          if (result.error) errorConfigIds.push(result.error);
+        }
+      });
+      if (stopAllRequested) break;
+      const summaryMessage = `Summary: Success for ${successful}/${configs.length} configs, errors = ${errors};${errorConfigIds.join(',') || 'none'}`;
+      try {
+        await bot.sendMessage(chatId, truncateMessage(summaryMessage));
+      } catch (telegramError) {
+        console.error(`[ERROR] Failed to send Telegram summary: ${telegramError.message}`);
+      }
+      const globalSleep = Math.random() * (1000 - 300) + 300; // Global sleep between 300-1000s
+      console.log(`[INFO] Waiting for ${Math.round(globalSleep)} seconds before next iteration...`);
+      await sleep(globalSleep * 1000);
     }
     return;
   }
@@ -295,6 +323,8 @@ bot.onText(/\/run (.+)/, async (msg, match) => {
     console.error(`[ERROR] Script error: ${error.message}`);
     runningConfigs.delete(config.config_id);
     bot.sendMessage(chatId, `Script stopped due to error: ${error.message}`);
+  }).finally(() => {
+    runningConfigs.delete(config.config_id);
   });
 });
 
@@ -305,12 +335,12 @@ bot.onText(/\/stop (.+)/, (msg, match) => {
 
   if (configId === 'all') {
     if (runningConfigs.size === 0) {
-      bot.sendMessage(chatId, 'No scripts are running.');
+      bot.sendMessage(chatId, 'No configs are running.');
       return;
     }
     stopAllRequested = true;
     runningConfigs.clear();
-    bot.sendMessage(chatId, 'All running scripts stopped.');
+    bot.sendMessage(chatId, 'Stopped all configs.');
     stopAllRequested = false; // Reset flag
     return;
   }
