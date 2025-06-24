@@ -17,13 +17,6 @@ fs.ensureDirSync(CONFIG_DIR);
 let runningConfigs = new Set(); // Track running config IDs
 let stopAllRequested = false; // Flag to stop all configs
 
-// Proxy pool (optional, add your proxies here)
-const proxies = [
-  'http://username:password@us-proxy:port', // Replace with actual proxy
-  'http://username:password@eu-proxy:port', // Replace with actual proxy
-  'http://username:password@asia-proxy:port', // Replace with actual proxy
-];
-
 // Timezone
 const TZ = 'Europe/Lisbon';
 
@@ -103,8 +96,7 @@ async function runScript(config, chatId) {
       if (!runningConfigs.has(config.config_id) || stopAllRequested) break;
       params.t = Math.floor(Date.now()).toString();
       const timestamp = moment().tz(TZ).format('YYYY-MM-DD HH:mm:ss');
-      const randomProxy = proxies.length > 0 ? proxies[Math.floor(Math.random() * proxies.length)] : null;
-      console.log(`[INFO] Request sent at ${timestamp} for config ${config.config_id}, deal_position=${params._deal_position}, type=${params.type}, proxy=${randomProxy || 'none'}`);
+      console.log(`[INFO] Request sent at ${timestamp} for config ${config.config_id}, deal_position=${params._deal_position}, type=${params.type}`);
       try {
         const response = await cloudscraper({
           method: 'POST',
@@ -119,7 +111,6 @@ async function runScript(config, chatId) {
             'X-Requested-With': 'XMLHttpRequest',
             'Connection': 'keep-alive',
           },
-          proxy: randomProxy, // Use random proxy if available
           jar: true,
           challengesToSolve: 10, // Increased to handle tougher challenges
           resolveWithFullResponse: true,
