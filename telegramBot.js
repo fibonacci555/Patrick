@@ -17,6 +17,13 @@ fs.ensureDirSync(CONFIG_DIR);
 let runningConfigs = new Set(); // Track running config IDs
 let stopAllRequested = false; // Flag to stop all configs
 
+// Proxy pool (optional, add your proxies here)
+const proxies = [
+  'http://username:password@us-proxy:port', // Replace with actual proxy
+  'http://username:password@eu-proxy:port', // Replace with actual proxy
+  'http://username:password@asia-proxy:port', // Replace with actual proxy
+];
+
 // Timezone
 const TZ = 'Europe/Lisbon';
 
@@ -96,7 +103,8 @@ async function runScript(config, chatId) {
       if (!runningConfigs.has(config.config_id) || stopAllRequested) break;
       params.t = Math.floor(Date.now()).toString();
       const timestamp = moment().tz(TZ).format('YYYY-MM-DD HH:mm:ss');
-      console.log(`[INFO] Request sent at ${timestamp} for config ${config.config_id}, deal_position=${params._deal_position}, type=${params.type}`);
+      const randomProxy = proxies.length > 0 ? proxies[Math.floor(Math.random() * proxies.length)] : null;
+      console.log(`[INFO] Request sent at ${timestamp} for config ${config.config_id}, deal_position=${params._deal_position}, type=${params.type}, proxy=${randomProxy || 'none'}`);
       try {
         const response = await cloudscraper({
           method: 'POST',
@@ -111,9 +119,10 @@ async function runScript(config, chatId) {
             'X-Requested-With': 'XMLHttpRequest',
             'Connection': 'keep-alive',
           },
-          jar: true, // Enable cookies
-          challengesToSolve: 5, // Increase attempts to solve Cloudflare challenges
-          resolveWithFullResponse: true, // Get full response object
+          proxy: randomProxy, // Use random proxy if available
+          jar: true,
+          challengesToSolve: 10, // Increased to handle tougher challenges
+          resolveWithFullResponse: true,
         });
         console.log(`Status Code: ${response.statusCode}`);
         console.log(`Response: ${response.body}`);
@@ -125,42 +134,16 @@ async function runScript(config, chatId) {
       } catch (error) {
         hasError = true;
         console.error(`[ERROR] Request failed: ${error.message}`);
-        let errorMessage = `[ERROR] Request failed for config ${config.config_id}, deal_position=${params._deal_position}, type=${params.type}: ${error.message}\n`;
-        if (error.response) {
-          console.error(`Status Code: ${error.response.statusCode}`);
-          console.error(`Response Body: ${error.response.body}`);
-          console.error(`Headers: ${JSON.stringify(error.response.headers, null, 2)}`);
-          errorMessage += `Status: ${error.response.statusCode}\nBody: ${truncateMessage(error.response.body, 1000)}\n`;
-          if (error.response.statusCode === 403) {
-            consecutive403s++;
-            errorMessage += `Consecutive 403s: ${consecutive403s}/${MAX_403S}\n`;
-            if (consecutive403s >= MAX_403S) {
-              runningConfigs.delete(config.config_id);
-              errorMessage += `Stopped config ${config.config_id} due to too many 403 errors. Check Cloudflare protection or deal parameters.`;
-              await bot.sendMessage(config.chat_id || chatId, truncateMessage(errorMessage));
-              return { success: false, error: config.config_id };
-            }
+        if (error.response && error.response.statusCode === 403) {
+          consecutive403s++;
+          if (consecutive403s >= MAX_403S) {
+            console.error(`[ERROR] Too many 403 errors for config ${config.config_id}, stopping.`);
+            runningConfigs.delete(config.config_id);
+            return { success: false, error: config.config_id };
           }
-        } else if (error.request) {
-          console.error(`Request Details: ${JSON.stringify(error.request, null, 2)}`);
-          errorMessage += `Request failed without response.\n`;
         }
-        console.error(`Stack: ${error.stack}`);
       }
       await sleep(2000); // 2 seconds between requests
-    }
-
-    // Send Telegram summary message
-    if (runningConfigs.has(config.config_id) && !stopAllRequested) {
-      let summaryMessage = `Request results for config ${config.config_id}:\n`;
-      for (const [position, status] of positionStatus) {
-        summaryMessage += `${status.successful}/${status.total} requests for position ${position} worked\n`;
-      }
-      try {
-        await bot.sendMessage(config.chat_id || chatId, truncateMessage(summaryMessage));
-      } catch (telegramError) {
-        console.error(`[ERROR] Failed to send Telegram message: ${telegramError.message}`);
-      }
     }
 
     if (!runningConfigs.has(config.config_id) || stopAllRequested) {
@@ -214,7 +197,7 @@ bot.onText(/\/add/, (msg) => {
           throw new Error("Each deal must have 'deal_id', 'deal_code', and 'deal_position'");
         }
       }
-      config.chat_id = chatId; // Store chat_id for error notifications
+      config.chat_id = chatId;
       const configId = saveConfig(config);
       bot.sendMessage(chatId, `Configuration saved with ID: ${configId}`);
     } catch (error) {
@@ -270,12 +253,9 @@ bot.onText(/\/run (.+)/, async (msg, match) => {
     }
     bot.sendMessage(chatId, `Starting configs for all (${configs.length} configs).`);
     while (!stopAllRequested) {
-      let successful = 0;
-      let errors = 0;
-      const errorConfigIds = [];
       const promises = configs.map(config => {
         if (runningConfigs.has(config.config_id)) return Promise.resolve({ success: false, error: config.config_id });
-        config.chat_id = chatId; // Store chat_id for notifications
+        config.chat_id = chatId;
         runningConfigs.add(config.config_id);
         return runScript(config, chatId).catch(error => {
           console.error(`[ERROR] Script error for config ${config.config_id}: ${error.message}`);
@@ -285,15 +265,11 @@ bot.onText(/\/run (.+)/, async (msg, match) => {
         });
       });
       const results = await Promise.all(promises);
-      results.forEach(result => {
-        if (result.success) successful++;
-        else {
-          errors++;
-          if (result.error) errorConfigIds.push(result.error);
-        }
-      });
+      const successful = results.filter(r => r.success).length;
+      const errors = results.filter(r => !r.success).length;
+      const errorConfigIds = results.filter(r => r.error).map(r => r.error).join(',');
       if (stopAllRequested) break;
-      const summaryMessage = `Summary: Success for ${successful}/${configs.length} configs, errors = ${errors};${errorConfigIds.join(',') || 'none'}`;
+      const summaryMessage = `Summary: Success for ${successful}/${configs.length} configs, errors = ${errors};${errorConfigIds || 'none'}`;
       try {
         await bot.sendMessage(chatId, truncateMessage(summaryMessage));
       } catch (telegramError) {
@@ -316,7 +292,7 @@ bot.onText(/\/run (.+)/, async (msg, match) => {
     return;
   }
   const config = fs.readJsonSync(configPath);
-  config.chat_id = chatId; // Store chat_id for error notifications
+  config.chat_id = chatId;
   runningConfigs.add(config.config_id);
   bot.sendMessage(chatId, `Running configuration ${configId}.`);
   runScript(config, chatId).catch(error => {
