@@ -1,0 +1,15 @@
+{
+  "slug": "lark-funding",
+  "base_url": "https://www.wethrift.com/api/submit-action",
+  "min_sleep": 600,
+  "max_sleep": 1200,
+  "chat_id": 5078730107,
+  "deals": [
+    {
+      "deal_id": "P36N3YSR3J",
+      "deal_code": "INVEST",
+      "deal_position": "1"
+    }
+  ],
+  "config_id": "17507299231795ex0bj"
+}

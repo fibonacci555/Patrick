@@ -1,0 +1,15 @@
+{
+  "slug": "dropship",
+  "base_url": "https://www.wethrift.com/api/submit-action",
+  "min_sleep": 600,
+  "max_sleep": 1200,
+  "chat_id": 5078730107,
+  "deals": [
+    {
+      "deal_id": "P3P5D9X5JJ",
+      "deal_code": "SACE25",
+      "deal_position": "1"
+    }
+  ],
+  "config_id": "1750729923180k9upti"
+}
