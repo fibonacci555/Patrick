@@ -4,11 +4,12 @@ const moment = require('moment-timezone');
 const fs = require('fs-extra');
 const path = require('path');
 const logUpdate = require('log-update');
-const { URL } = require('url'); // Import the URL class
+const { URL } = require('url');
 
 // --- Configuration and Setup ---
 
 const CONFIG_DIR = path.join(__dirname, 'configs');
+const PROXY_FILE = path.join(__dirname, 'valid_proxies.txt');
 fs.ensureDirSync(CONFIG_DIR);
 
 const TZ = 'Europe/Lisbon';
@@ -33,6 +34,28 @@ const USER_AGENTS = [
 
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
+function loadProxies() {
+    try {
+        if (!fs.existsSync(PROXY_FILE)) {
+            console.error('Proxy file valid_proxies.txt not found.');
+            return [];
+        }
+        const proxyList = fs.readFileSync(PROXY_FILE, 'utf8')
+            .split('\n')
+            .map(line => line.trim())
+            .filter(line => line && line.includes(':'));
+        return proxyList;
+    } catch (error) {
+        console.error('Error loading proxies:', error);
+        return [];
+    }
+}
+
+function getRandomProxy(proxies) {
+    if (proxies.length === 0) return null;
+    return proxies[Math.floor(Math.random() * proxies.length)];
+}
+
 function createProgressBar(processed, total, barLength = 20) {
     if (total === 0) {
         return `|${'─'.repeat(barLength)}|`;
@@ -54,6 +77,7 @@ function logError(configId, message) {
 }
 
 // --- Config Management ---
+
 function loadConfigs() {
     const configs = [];
     const files = fs.readdirSync(CONFIG_DIR).filter(file => file.endsWith('.json'));
@@ -61,16 +85,20 @@ function loadConfigs() {
         try {
             const config = fs.readJsonSync(path.join(CONFIG_DIR, file));
             configs.push(config);
-        } catch (error) { console.error(`Error loading config file: ${file}`, error); }
+        } catch (error) {
+            console.error(`Error loading config file: ${file}`, error);
+        }
     }
     return configs;
 }
+
 function saveConfig(config) {
     const configId = config.config_id || Date.now().toString();
     config.config_id = configId;
     fs.writeJsonSync(path.join(CONFIG_DIR, `${configId}.json`), config, { spaces: 2 });
     return configId;
 }
+
 function deleteConfig(configId) {
     const configPath = path.join(CONFIG_DIR, `${configId}.json`);
     if (fs.existsSync(configPath)) {
@@ -79,7 +107,6 @@ function deleteConfig(configId) {
     }
     return false;
 }
-
 
 // --- Dynamic Dashboard Rendering ---
 
@@ -96,13 +123,11 @@ function renderDashboard() {
             const progressText = `${processed}/${status.total}`.padEnd(7);
             const successText = `Success: ${status.successful}`.padEnd(12);
 
-        
-            
             let line1 = `▶ ID: ${id.padEnd(15)} | ${progressbar} ${progressText} | ${successText} | Status: ${status.status.padEnd(10)} | URL: ${status.url}`;
             
             if (status.status === 'Waiting') {
                 const countdown = Math.max(0, Math.round((status.nextRunEndTime - Date.now()) / 1000));
-                line1 += `| Next run in: ${countdown}s`;
+                line1 += ` | Next run in: ${countdown}s`;
             }
             
             output += line1 + '\n';
@@ -115,7 +140,6 @@ function renderDashboard() {
     logUpdate(output);
 }
 
-
 // --- Main Script Function ---
 
 async function runScript(config) {
@@ -125,7 +149,6 @@ async function runScript(config) {
     const minSleep = min_sleep || 300;
     const maxSleep = max_sleep || 1000;
     
-    // CORRECTED: Dynamically construct the display URL from the base_url and slug
     let storeUrl = 'N/A';
     if (slug) {
         try {
@@ -134,6 +157,11 @@ async function runScript(config) {
         } catch (e) {
             storeUrl = 'Invalid base_url in config';
         }
+    }
+
+    const proxies = loadProxies();
+    if (proxies.length === 0) {
+        logError(config_id, 'No valid proxies found. Running without proxies.');
     }
 
     const paramsList = [];
@@ -164,11 +192,31 @@ async function runScript(config) {
             params.t = Math.floor(Date.now()).toString();
 
             try {
-                const response = await cloudscraper({
-                    method: 'POST', url: baseUrl, qs: params,
-                    headers: { 'User-Agent': currentUserAgent, 'Accept': 'application/json, text/plain, */*', 'Accept-Language': 'en-US,en;q=0.9', 'Referer': 'https://www.wethrift.com/', 'Origin': 'https://www.wethrift.com', 'X-Requested-With': 'XMLHttpRequest', 'Connection': 'keep-alive' },
-                    jar: true, challengesToSolve: 10, resolveWithFullResponse: true, timeout: 15000,
-                });
+                const proxy = getRandomProxy(proxies);
+                const requestConfig = {
+                    method: 'POST',
+                    url: baseUrl,
+                    qs: params,
+                    headers: {
+                        'User-Agent': currentUserAgent,
+                        'Accept': 'application/json, text/plain, */*',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'Referer': 'https://www.wethrift.com/',
+                        'Origin': 'https://www.wethrift.com',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'Connection': 'keep-alive'
+                    },
+                    jar: true,
+                    challengesToSolve: 10,
+                    resolveWithFullResponse: true,
+                    timeout: 15000
+                };
+
+                if (proxy) {
+                    requestConfig.proxy = `http://${proxy}`;
+                }
+
+                const response = await cloudscraper(requestConfig);
 
                 if (response.statusCode === 200 && JSON.parse(response.body).success) {
                     status.successful++;
@@ -210,7 +258,6 @@ async function main() {
     const promises = configs.map(config => {
         runningConfigs.add(config.config_id);
         
-        // CORRECTED: Dynamically construct the display URL for the "Queued" status
         let storeUrl = 'N/A';
         if (config.slug) {
             try {
