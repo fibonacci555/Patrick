@@ -136,8 +136,8 @@ async def run_script(config):
     config_id = config.get('config_id')
     base_url = config.get('base_url', 'https://www.wethrift.com/api/submit-action')
     slug = config.get('slug', 'scraper')
-    min_sleep = config.get('min_sleep', 300)
-    max_sleep = config.get('max_sleep', 1000)
+    min_sleep = 1500
+    max_sleep = 3000
     deals = config.get('deals', [])
 
     # Build store URL
