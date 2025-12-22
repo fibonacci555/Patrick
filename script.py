@@ -28,12 +28,20 @@ stop_all_requested = False
 configs_status = {}
 
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0",
-    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
 ]
+
+# --- Adapter Setup ---
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+retry_strategy = Retry(
+    total=3,
+    backoff_factor=1,
+    status_forcelist=[500, 502, 503, 504],
+    allowed_methods=["POST", "GET"]
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
 
 # --- Helper Functions ---
 
@@ -97,6 +105,8 @@ def delete_config(config_id):
 tmp_scraper = cloudscraper.create_scraper()
 # Configura bundle de CAs atualizado
 tmp_scraper.verify = certifi.where()
+tmp_scraper.mount("https://", adapter)
+tmp_scraper.mount("http://", adapter)
 SCRAPER = tmp_scraper
 
 # --- Dynamic Dashboard Rendering ---
@@ -227,7 +237,9 @@ async def run_script(config):
                     st['failed'] += 1
                     await log_error(config_id, f"Request failed: {full}")
                     if code == 403:
-                        await log_error(config_id, f"↳ 403 Forbidden on params: {params}")
+                        await log_error(config_id, f"↳ 403 Forbidden on params: {params}. Removing proxy {proxy}")
+                        if proxy in proxies:
+                            proxies.remove(proxy)
             except Exception as e:
                 err = f"Error: {e}"
                 st['failed'] += 1

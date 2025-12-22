@@ -25,11 +25,15 @@ def check_proxy():
             break
 
         try:
+            # Check against wethrift.com to ensure the proxy isn't blocked by their WAF/Cloudflare
             r = requests.get(
-                "https://ipinfo.io/json",
+                "https://www.wethrift.com/",
                 proxies={
                     "http": f"http://{proxy}",
                     "https": f"http://{proxy}",
+                },
+                headers={
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
                 },
                 timeout=TIMEOUT
             )
