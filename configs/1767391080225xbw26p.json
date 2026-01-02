@@ -1,0 +1,15 @@
+{
+  "slug": "deeper-network#deal=FKVY2SKGCJ",
+  "base_url": "https://www.wethrift.com/api/submit-action",
+  "min_sleep": 600,
+  "max_sleep": 1200,
+  "chat_id": 5078730107,
+  "deals": [
+    {
+      "deal_id": "",
+      "deal_code": "GYORGI",
+      "deal_position": "3"
+    }
+  ],
+  "config_id": "1767391080225xbw26p"
+}

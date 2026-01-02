@@ -1,0 +1,15 @@
+{
+  "slug": "prodrive",
+  "base_url": "https://www.wethrift.com/api/submit-action",
+  "min_sleep": 600,
+  "max_sleep": 1200,
+  "chat_id": 5078730107,
+  "deals": [
+    {
+      "deal_id": "P3AQT25QCJ",
+      "deal_code": "STOCKSPROM",
+      "deal_position": "1"
+    }
+  ],
+  "config_id": "1767391080222od0e59"
+}

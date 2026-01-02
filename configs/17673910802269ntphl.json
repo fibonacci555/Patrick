@@ -1,0 +1,15 @@
+{
+  "slug": "traders-with-edge",
+  "base_url": "https://www.wethrift.com/api/submit-action",
+  "min_sleep": 600,
+  "max_sleep": 1200,
+  "chat_id": 5078730107,
+  "deals": [
+    {
+      "deal_id": "",
+      "deal_code": "INVEST",
+      "deal_position": "2"
+    }
+  ],
+  "config_id": "17673910802269ntphl"
+}

@@ -1,0 +1,7 @@
+pytz
+certifi
+cloudscraper
+loguru
+aiofiles
+requests
+urllib3
