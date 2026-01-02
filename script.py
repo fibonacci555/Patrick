@@ -11,6 +11,12 @@ import cloudscraper
 from loguru import logger
 import aiofiles
 from pathlib import Path
+import argparse
+
+# --- Argument Parsing ---
+parser = argparse.ArgumentParser()
+parser.add_argument("--once", action="store_true", help="Run only once and exit")
+args = parser.parse_args()
 
 # --- Configuration and Setup ---
 
@@ -249,6 +255,9 @@ async def run_script(config):
             await asyncio.sleep(2)
 
         if config_id not in running_configs or stop_all_requested:
+            break
+
+        if args.once:
             break
 
         sleep_time = random.uniform(min_sleep, max_sleep)
