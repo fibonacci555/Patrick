@@ -7,7 +7,7 @@ from datetime import datetime
 import pytz
 from urllib.parse import urlparse
 import certifi
-import cloudscraper
+from curl_cffi import requests as cffi_requests
 from loguru import logger
 import aiofiles
 from pathlib import Path
@@ -38,16 +38,7 @@ USER_AGENTS = [
 ]
 
 # --- Adapter Setup ---
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
-
-retry_strategy = Retry(
-    total=3,
-    backoff_factor=1,
-    status_forcelist=[500, 502, 503, 504],
-    allowed_methods=["POST", "GET"]
-)
-adapter = HTTPAdapter(max_retries=retry_strategy)
+# (Removed standard requests adapter in favor of curl_cffi built-in behavior or manual handling if needed)
 
 # --- Helper Functions ---
 
@@ -108,12 +99,9 @@ def delete_config(config_id):
 
 # --- Cloudsraper Setup ---
 
-tmp_scraper = cloudscraper.create_scraper()
-# Configura bundle de CAs atualizado
-tmp_scraper.verify = certifi.where()
-tmp_scraper.mount("https://", adapter)
-tmp_scraper.mount("http://", adapter)
-SCRAPER = tmp_scraper
+# --- Cloudscraper Replacement (curl_cffi) ---
+# We will initialize the session inside do_request or globally.
+SCRAPER = cffi_requests.Session()
 
 # --- Dynamic Dashboard Rendering ---
 
@@ -225,7 +213,8 @@ async def run_script(config):
                         params=params,
                         headers=headers,
                         proxies=proxies_dict,
-                        timeout=15
+                        timeout=15,
+                        impersonate="chrome120"
                     )
                 response = await loop.run_in_executor(None, do_request)
                 code = response.status_code

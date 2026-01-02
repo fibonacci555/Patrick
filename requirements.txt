@@ -1,7 +1,6 @@
 pytz
 certifi
-cloudscraper
+curl_cffi
 loguru
 aiofiles
 requests
-urllib3
