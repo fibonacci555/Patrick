@@ -18,7 +18,7 @@ def main():
                 print(f"Warning: script.py exited with return code {process.returncode}")
             
             # Calculate random sleep time between 15 and 20 minutes
-            wait_minutes = random.uniform(15, 20)
+            wait_minutes = random.uniform(25, 40)
             wait_seconds = wait_minutes * 60
             
             next_run = time.time() + wait_seconds

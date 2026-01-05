@@ -3,7 +3,7 @@ import queue
 import requests
 
 INPUT_FILE = "proxies.txt"
-OUTPUT_FILE = "proxies.txt"  # sobrescreve o mesmo ficheiro
+OUTPUT_FILE = "valid_proxies.txt"  # Writes strictly to valid_proxies.txt
 THREADS = 50
 TIMEOUT = 10
 

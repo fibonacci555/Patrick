@@ -35,6 +35,11 @@ configs_status = {}
 
 USER_AGENTS = [
     "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
 ]
 
 # --- Adapter Setup ---
@@ -186,7 +191,13 @@ async def run_script(config):
         st = configs_status[config_id]
         st.update({'status': 'Running', 'successful': 0, 'failed': 0})
 
+        completed_actions = set()
         for params in params_list:
+            # Check if this action (deal + type) was already successful
+            action_key = (params.get('deal_code'), params.get('type'))
+            if action_key in completed_actions:
+                continue
+
             if config_id not in running_configs or stop_all_requested:
                 break
             params['t'] = str(int(time.time()))
@@ -228,6 +239,10 @@ async def run_script(config):
                 st['last_response'] = full
                 if code == 200 and data.get('success'):
                     st['successful'] += 1
+                    # Mark this action as completed so we don't retry it (e.g. at other positions)
+                    action_key = (params.get('deal_code'), params.get('type'))
+                    completed_actions.add(action_key)
+
                 else:
                     st['failed'] += 1
                     await log_error(config_id, f"Request failed: {full}")
@@ -241,7 +256,17 @@ async def run_script(config):
                 st['last_response'] = err
                 await log_error(config_id, err)
 
-            await asyncio.sleep(2)
+            # Batch delay / Humanization
+            wait_time = random.uniform(5, 12)
+            # Occasional longer pause every ~20 requests (simulated by probability or explicit counter)
+            # Since we iterate inside 'params_list', we can just use wait_time.
+            # To be more robust, we could check (st['successful'] + st['failed']) % 20 == 0
+            total_reqs = st['successful'] + st['failed']
+            if total_reqs > 0 and total_reqs % 20 == 0:
+                print(f"   [Pause] Taking a break after {total_reqs} requests...")
+                wait_time += random.uniform(30, 60)
+
+            await asyncio.sleep(wait_time)
 
         if config_id not in running_configs or stop_all_requested:
             break
